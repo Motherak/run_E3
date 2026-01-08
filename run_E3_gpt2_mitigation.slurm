@@ -70,10 +70,10 @@ apptainer exec --nv --bind "$WORKDIR:$WORKDIR" "$IMG" \
     data_selection=importance_sampling \
     num_iterations=10 \
     wandb_disabled=true \
-    +model.model_name_or_path="$GPT2_DIR" \
-    +model.tokenizer_name="$GPT2_DIR" \
-    +detector.model_path="$DET_DIR" \
-    +detector.tokenizer_name="$DET_DIR"
+    ++model.model_name_or_path="$GPT2_DIR" \
+    ++model.tokenizer_name="$GPT2_DIR" \
+    ++detector.model_path="$DET_DIR" \
+    ++detector.tokenizer_name="$DET_DIR"
 
 echo "[INFO] Done at $(date)"
 echo "[INFO] Outputs: $RUN_DIR"
