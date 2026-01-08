@@ -2,15 +2,22 @@ Bootstrap: docker
 From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 
 %environment
+    # ---- runtime behaviour ----
     export TRANSFORMERS_OFFLINE=1
     export HF_HUB_OFFLINE=1
+
+    # wandb MUST be fully disabled (prevents API key prompt)
+    export WANDB_MODE=disabled
     export WANDB_DISABLED=true
+    export WANDB_SILENT=true
+
     export TOKENIZERS_PARALLELISM=false
 
+    # ---- caches (bind these to $SLURM_TMPDIR in Slurm) ----
     export HF_HOME=/tmp/.hf_cache
-    export TRANSFORMERS_CACHE=${HF_HOME}/transformers
     export HF_DATASETS_CACHE=${HF_HOME}/datasets
     export HUGGINGFACE_HUB_CACHE=${HF_HOME}/hub
+    export TRANSFORMERS_CACHE=${HF_HOME}/transformers
 
 %files
     requirements.txt /opt/requirements.txt
@@ -19,36 +26,73 @@ From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 %post
     set -eux
 
+    # ------------------------------------------------------------
+    # System basics
+    # ------------------------------------------------------------
     apt-get update
-    apt-get install -y --no-install-recommends ca-certificates git
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git
     rm -rf /var/lib/apt/lists/*
 
+    # ------------------------------------------------------------
+    # Python tooling
+    # ------------------------------------------------------------
     python -m pip install --upgrade pip setuptools wheel
 
-    # Force reinstall to remove transformers dev that comes with base image
+    # ------------------------------------------------------------
+    # Always fix requests/certifi stack + hub
+    # ------------------------------------------------------------
     python -m pip install --upgrade --force-reinstall \
-        certifi requests urllib3 idna charset_normalizer \
-        huggingface_hub \
-        transformers==4.40.2 \
-        datasets==2.21.0 \
-        accelerate==0.33.0 \
-        sentencepiece protobuf
+        certifi \
+        requests \
+        urllib3 \
+        idna \
+        charset_normalizer \
+        huggingface_hub
 
+    # ------------------------------------------------------------
+    # Install core deps (torch already in base image)
+    # ------------------------------------------------------------
+    python -m pip install --upgrade \
+        datasets \
+        accelerate \
+        sentencepiece \
+        protobuf
+
+    # ------------------------------------------------------------
+    # Transformers FROM SOURCE (required by src/train.py check_min_version)
+    # This satisfies: check_min_version("4.48.0.dev0")
+    # ------------------------------------------------------------
+    python -m pip install --upgrade --force-reinstall \
+        "git+https://github.com/huggingface/transformers.git@main"
+
+    # ------------------------------------------------------------
     # Repo requirements
+    # ------------------------------------------------------------
     python -m pip install -r /opt/requirements.txt
 
-    # Download models into the image (requires internet at build time)
+    # ------------------------------------------------------------
+    # Download models INTO the container (needs internet at build time)
+    # Must save into /opt/models/* (as in your script)
+    # ------------------------------------------------------------
     python /opt/download_models_into_container.py
 
+    # ------------------------------------------------------------
     # Smoke test
+    # ------------------------------------------------------------
     python - <<'PY'
-import sys, torch, transformers, certifi, requests, huggingface_hub
+import sys, torch, transformers, certifi, requests, huggingface_hub, os
 print("python:", sys.version)
 print("torch:", torch.__version__)
 print("transformers:", transformers.__version__)
 print("certifi:", certifi.__version__)
 print("requests:", requests.__version__)
 print("huggingface_hub:", huggingface_hub.__version__)
+print("WANDB_MODE:", os.environ.get("WANDB_MODE"))
+print("models exist:",
+      os.path.isdir("/opt/models/gpt2"),
+      os.path.isdir("/opt/models/modernbert_ai_detection"))
 PY
 
 %runscript

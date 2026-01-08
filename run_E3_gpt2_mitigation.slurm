@@ -15,7 +15,7 @@ echo "[INFO] Start: $(date)"
 # Paths
 # ------------------------------------------------------------
 WORKDIR="/home/hpc/b116ba/b117ba41/Masterarbeit/KonkreteVersuche/E3_drayson/model_collapse"
-IMG="$WORKDIR/model_collapse_tf440.sif"
+IMG="$WORKDIR/model_collapse_tfdev.sif"
 RUN_DIR="$WORKDIR/outputs_fixed/gpt2_topk_importance/job_${SLURM_JOB_ID}"
 
 # ------------------------------------------------------------
