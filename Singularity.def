@@ -2,13 +2,12 @@ Bootstrap: docker
 From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 
 %environment
-    # Container ist offline-ready (Compute-Nodes ohne Internet)
     export TRANSFORMERS_OFFLINE=1
     export HF_HUB_OFFLINE=1
     export WANDB_DISABLED=true
     export TOKENIZERS_PARALLELISM=false
 
-    # Cache-Pfade (werden im Slurm auf $SLURM_TMPDIR gebunden)
+    # Cache zur Laufzeit (im Slurm auf $SLURM_TMPDIR binden)
     export HF_HOME=/tmp/.hf_cache
     export TRANSFORMERS_CACHE=${HF_HOME}/transformers
     export HF_DATASETS_CACHE=${HF_HOME}/datasets
@@ -21,13 +20,14 @@ From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 %post
     set -eux
 
+    # basics
     apt-get update
-    apt-get install -y --no-install-recommends git ca-certificates
+    apt-get install -y --no-install-recommends ca-certificates git
     rm -rf /var/lib/apt/lists/*
 
     python -m pip install --upgrade pip setuptools wheel
 
-    # Core + Fix für dein certifi/requests Problem
+    # Core stack (inkl. certifi + hub + transformers)
     python -m pip install \
       certifi requests urllib3 idna charset_normalizer \
       huggingface_hub \
@@ -36,7 +36,7 @@ From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
       accelerate==0.33.0 \
       sentencepiece protobuf
 
-    # Repo requirements direkt ins Image
+    # Repo requirements vollständig ins Image
     python -m pip install -r /opt/requirements.txt
 
     # Modelle direkt ins Image laden (braucht Internet beim build!)

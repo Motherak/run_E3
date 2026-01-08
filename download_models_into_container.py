@@ -1,30 +1,21 @@
 from pathlib import Path
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
+from huggingface_hub import snapshot_download
 
 OUT = Path("/opt/models")
 OUT.mkdir(parents=True, exist_ok=True)
 
-def save_gpt2():
-    d = OUT / "gpt2"
-    d.mkdir(parents=True, exist_ok=True)
-    tok = AutoTokenizer.from_pretrained("gpt2")
-    mdl = AutoModelForCausalLM.from_pretrained("gpt2")
-    tok.save_pretrained(d)
-    mdl.save_pretrained(d)
-    print("[OK] saved gpt2 ->", d)
-
-def save_detector():
-    # Laut Repo/README ist der Detector: GeorgeDrayson/modernbert-ai-detection
-    # (das ist das Modell, das “machine-generated text detection” macht)
-    model_id = "GeorgeDrayson/modernbert-ai-detection"
-    d = OUT / "modernbert_ai_detection"
-    d.mkdir(parents=True, exist_ok=True)
-    tok = AutoTokenizer.from_pretrained(model_id)
-    mdl = AutoModelForSequenceClassification.from_pretrained(model_id)
-    tok.save_pretrained(d)
-    mdl.save_pretrained(d)
-    print("[OK] saved detector ->", d)
+def dl(repo_id: str, out_dir: Path):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_download(
+        repo_id=repo_id,
+        local_dir=str(out_dir),
+        local_dir_use_symlinks=False,  # wichtig im Container
+        # revision="main",  # optional
+    )
+    print(f"[OK] downloaded {repo_id} -> {out_dir}")
 
 if __name__ == "__main__":
-    save_gpt2()
-    save_detector()
+    dl("gpt2", OUT / "gpt2")
+
+    # Detector aus dem Paper/Repo – bei dir war das die Idee:
+    dl("GeorgeDrayson/modernbert-ai-detection", OUT / "modernbert_ai_detection")
