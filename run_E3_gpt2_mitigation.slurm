@@ -8,7 +8,7 @@
 set -euo pipefail
 
 WORKDIR="/home/hpc/b116ba/b117ba41/Masterarbeit/KonkreteVersuche/E3_drayson/model_collapse"
-IMG="$WORKDIR/model_collapse.sif"
+IMG="$WORKDIR/model_collapse_tf440.sif" # Version wie im Paper
 RUN_DIR="$WORKDIR/outputs_fixed/gpt2_topk_importance/job_${SLURM_JOB_ID}"
 
 TMPBASE="${SLURM_TMPDIR:-/tmp}/${USER}/model_collapse_${SLURM_JOB_ID}"
