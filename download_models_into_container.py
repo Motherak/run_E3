@@ -11,11 +11,11 @@ def save_gpt2():
     mdl = AutoModelForCausalLM.from_pretrained("gpt2")
     tok.save_pretrained(d)
     mdl.save_pretrained(d)
-    print("[OK] Saved GPT2 to", d)
+    print("[OK] saved gpt2 ->", d)
 
 def save_detector():
-    # ⚠️ Falls dein Detector anders heißt, musst du diese ID anpassen.
-    # Das ist ein Platzhalter, der oft NICHT exakt passt.
+    # Laut Repo/README ist der Detector: GeorgeDrayson/modernbert-ai-detection
+    # (das ist das Modell, das “machine-generated text detection” macht)
     model_id = "GeorgeDrayson/modernbert-ai-detection"
     d = OUT / "modernbert_ai_detection"
     d.mkdir(parents=True, exist_ok=True)
@@ -23,7 +23,7 @@ def save_detector():
     mdl = AutoModelForSequenceClassification.from_pretrained(model_id)
     tok.save_pretrained(d)
     mdl.save_pretrained(d)
-    print("[OK] Saved detector to", d)
+    print("[OK] saved detector ->", d)
 
 if __name__ == "__main__":
     save_gpt2()

@@ -2,26 +2,32 @@ Bootstrap: docker
 From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 
 %environment
+    # Container ist offline-ready (Compute-Nodes ohne Internet)
     export TRANSFORMERS_OFFLINE=1
     export HF_HUB_OFFLINE=1
     export WANDB_DISABLED=true
     export TOKENIZERS_PARALLELISM=false
 
-    # Cache zur Laufzeit (wird im Slurm auf $SLURM_TMPDIR gebunden)
+    # Cache-Pfade (werden im Slurm auf $SLURM_TMPDIR gebunden)
     export HF_HOME=/tmp/.hf_cache
     export TRANSFORMERS_CACHE=${HF_HOME}/transformers
     export HF_DATASETS_CACHE=${HF_HOME}/datasets
     export HUGGINGFACE_HUB_CACHE=${HF_HOME}/hub
 
+%files
+    requirements.txt /opt/requirements.txt
+    download_models_into_container.py /opt/download_models_into_container.py
+
 %post
     set -eux
+
     apt-get update
     apt-get install -y --no-install-recommends git ca-certificates
     rm -rf /var/lib/apt/lists/*
 
     python -m pip install --upgrade pip setuptools wheel
 
-    # Core stack (inkl. certifi)
+    # Core + Fix für dein certifi/requests Problem
     python -m pip install \
       certifi requests urllib3 idna charset_normalizer \
       huggingface_hub \
@@ -30,23 +36,21 @@ From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
       accelerate==0.33.0 \
       sentencepiece protobuf
 
-    # Repo requirements (alles direkt in den Container)
+    # Repo requirements direkt ins Image
     python -m pip install -r /opt/requirements.txt
 
-    # Modelle in den Container laden (benötigt Internet beim Build)
+    # Modelle direkt ins Image laden (braucht Internet beim build!)
     python /opt/download_models_into_container.py
 
+    # Smoke test
     python - <<'PY'
-import certifi, requests, huggingface_hub, transformers
+import certifi, requests, huggingface_hub, transformers, torch
 print("certifi", certifi.__version__)
 print("requests", requests.__version__)
 print("hub", huggingface_hub.__version__)
 print("transformers", transformers.__version__)
+print("torch", torch.__version__)
 PY
-
-%files
-    requirements.txt /opt/requirements.txt
-    download_models_into_container.py /opt/download_models_into_container.py
 
 %runscript
     exec python "$@"
