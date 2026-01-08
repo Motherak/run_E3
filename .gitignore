@@ -15,7 +15,7 @@
 !requirements.txt
 !main.py
 
-# Optional docs/scripts you’ll likely want
+# Optional docs/scripts
 !**/*.md
 !**/*.txt
 !**/*.sh
@@ -30,13 +30,14 @@
 !**/*.slurm
 !**/*.def
 
-# If you keep small local dataset/config JSONs
+# Small JSONs (configs / tiny datasets)
 !data/**/*.json
 !config/**/*.json
 
 # =========================
-# Always ignore junk / runtime outputs (even if above matches)
+# Always ignore junk / runtime outputs
 # =========================
+
 # Python / venv / caches
 **/__pycache__/
 **/*.pyc
@@ -48,6 +49,7 @@ venv/
 .hf_cache/
 **/.pytest_cache/
 **/.ruff_cache/
+**/.cache/huggingface/
 
 # Hydra
 **/.hydra/
@@ -65,6 +67,9 @@ wandb/
 *.e*
 *.out
 *.err
+
+# Singularity images (huge binaries)
+*.sif
 
 # Editor swap files
 *.swp
