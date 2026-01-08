@@ -2,13 +2,11 @@ Bootstrap: docker
 From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 
 %environment
-    # --- Runtime behaviour ---
     export TRANSFORMERS_OFFLINE=1
     export HF_HUB_OFFLINE=1
     export WANDB_DISABLED=true
     export TOKENIZERS_PARALLELISM=false
 
-    # --- HF caches (werden im Slurm auf $SLURM_TMPDIR gemappt) ---
     export HF_HOME=/tmp/.hf_cache
     export TRANSFORMERS_CACHE=${HF_HOME}/transformers
     export HF_DATASETS_CACHE=${HF_HOME}/datasets
@@ -21,51 +19,28 @@ From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 %post
     set -eux
 
-    # ------------------------------------------------------------
-    # System basics
-    # ------------------------------------------------------------
     apt-get update
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        git
+    apt-get install -y --no-install-recommends ca-certificates git
     rm -rf /var/lib/apt/lists/*
 
-    # ------------------------------------------------------------
-    # Python tooling
-    # ------------------------------------------------------------
     python -m pip install --upgrade pip setuptools wheel
 
-    # ------------------------------------------------------------
-    # Core ML / HF stack (PINNED + force reinstall!)
-    # This guarantees no transformers 5.0.0.dev0 leaks in
-    # ------------------------------------------------------------
+    # Force reinstall to remove transformers dev that comes with base image
     python -m pip install --upgrade --force-reinstall \
-        certifi \
-        requests \
-        urllib3 \
-        idna \
-        charset_normalizer \
+        certifi requests urllib3 idna charset_normalizer \
         huggingface_hub \
         transformers==4.40.2 \
-        tokenizers==0.15.2 \
         datasets==2.21.0 \
         accelerate==0.33.0 \
-        sentencepiece \
-        protobuf
+        sentencepiece protobuf
 
-    # ------------------------------------------------------------
     # Repo requirements
-    # ------------------------------------------------------------
     python -m pip install -r /opt/requirements.txt
 
-    # ------------------------------------------------------------
-    # Download models INTO the container (online at build time)
-    # ------------------------------------------------------------
+    # Download models into the image (requires internet at build time)
     python /opt/download_models_into_container.py
 
-    # ------------------------------------------------------------
-    # Smoke test (fails build if something is wrong)
-    # ------------------------------------------------------------
+    # Smoke test
     python - <<'PY'
 import sys, torch, transformers, certifi, requests, huggingface_hub
 print("python:", sys.version)
