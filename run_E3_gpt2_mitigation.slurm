@@ -18,6 +18,9 @@ WORKDIR="/home/hpc/b116ba/b117ba41/Masterarbeit/KonkreteVersuche/E3_drayson/mode
 IMG="$WORKDIR/model_collapse_tfdev.sif"
 RUN_DIR="$WORKDIR/outputs_fixed/gpt2_topk_importance/job_${SLURM_JOB_ID}"
 
+# Iterations (repo expects RUN_DIR/<i>/data.json)
+NUM_ITERS=10
+
 # ------------------------------------------------------------
 # Node-local temp (keep caches off /home, isolate HOME)
 # ------------------------------------------------------------
@@ -40,6 +43,7 @@ cat > config/dataset/wikitext2_local.yaml <<'EOF'
 path: data/wikitext2
 EOF
 
+# Sanity check dataset files
 for f in data/wikitext2/train.json data/wikitext2/validation.json data/wikitext2/test.json; do
   if [ ! -f "$f" ]; then
     echo "[ERROR] Missing dataset file: $f"
@@ -49,20 +53,17 @@ done
 echo "[INFO] Dataset JSONs found."
 
 # ------------------------------------------------------------
-# Models live INSIDE the container
+# Precreate expected generation folders
 # ------------------------------------------------------------
-GPT2_DIR="/opt/models/gpt2"
-DET_DIR="/opt/models/modernbert_ai_detection"
-
 mkdir -p "$RUN_DIR"
-
-echo "[INFO] RUN_DIR: $RUN_DIR"
-echo "[INFO] Using container: $IMG"
-echo "[INFO] TMPBASE: $TMPBASE"
-echo "[INFO] WORKDIR: $WORKDIR"
+for i in $(seq 0 $NUM_ITERS); do
+  mkdir -p "$RUN_DIR/$i"
+  cp -f "$WORKDIR/data/wikitext2/train.json" "$RUN_DIR/$i/data.json"
+done
+echo "[INFO] Precreated $((NUM_ITERS+1)) folders with data.json under: $RUN_DIR"
 
 # ------------------------------------------------------------
-# HARD ISOLATION: prevent host ~/.local leakage into container
+# Apptainer isolation: prevent host ~/.local leaking into container
 # ------------------------------------------------------------
 APPT_CMD=(apptainer exec --nv --cleanenv --containall --no-home
   --bind "$WORKDIR:$WORKDIR"
@@ -71,33 +72,46 @@ APPT_CMD=(apptainer exec --nv --cleanenv --containall --no-home
   --env APPTAINERENV_HOME="$TMPBASE/home"
   --env APPTAINERENV_PYTHONNOUSERSITE=1
   --env APPTAINERENV_TOKENIZERS_PARALLELISM=false
-  --env APPTAINERENV_WANDB_DISABLED=true
+
+  # Offline everywhere
   --env APPTAINERENV_TRANSFORMERS_OFFLINE=1
   --env APPTAINERENV_HF_HUB_OFFLINE=1
   --env APPTAINERENV_HF_HOME="$HF_HOME"
   --env APPTAINERENV_TRANSFORMERS_CACHE="$TRANSFORMERS_CACHE"
   --env APPTAINERENV_HF_DATASETS_CACHE="$HF_DATASETS_CACHE"
   --env APPTAINERENV_HUGGINGFACE_HUB_CACHE="$HUGGINGFACE_HUB_CACHE"
+
+  # W&B hard disable
+  --env APPTAINERENV_WANDB_MODE=disabled
+  --env APPTAINERENV_WANDB_DISABLED=true
+  --env APPTAINERENV_WANDB_SILENT=true
+
   "$IMG"
 )
 
 # ------------------------------------------------------------
 # Debug checks
 # ------------------------------------------------------------
-echo "[INFO] Debug: repo visibility in container..."
-"${APPT_CMD[@]}" bash -lc "pwd; ls -lah '$WORKDIR' | head -n 30"
-"${APPT_CMD[@]}" bash -lc "test -f '$WORKDIR/main.py' && echo '[OK] main.py exists' || (echo '[ERR] main.py missing' && exit 1)"
+echo "[INFO] Debug: repo visible in container?"
+"${APPT_CMD[@]}" bash -lc "pwd; ls -lah '$WORKDIR' | head -n 40; test -f '$WORKDIR/main.py' && echo '[OK] main.py exists'"
 
-echo "[INFO] Debug: torch location..."
+echo "[INFO] Debug: torch + transformers inside container"
 "${APPT_CMD[@]}" python - <<'PY'
-import torch, sys
+import torch, transformers, certifi, requests, huggingface_hub
 print("torch:", torch.__version__)
-print("torch file:", torch.__file__)
-print("sys.path head:", sys.path[:10])
+print("transformers:", transformers.__version__)
+print("certifi:", certifi.__version__)
+print("requests:", requests.__version__)
+print("hub:", huggingface_hub.__version__)
 PY
 
+echo "[INFO] Debug: data.json exists?"
+ls -lah "$RUN_DIR/0/data.json" "$RUN_DIR/$NUM_ITERS/data.json"
+
 # ------------------------------------------------------------
-# Run (Hydra overrides with ++ everywhere)
+# Run
+# Models are inside container at /opt/models/*
+# Hydra overrides use ++ to force override existing keys.
 # ------------------------------------------------------------
 echo "[INFO] Starting main.py ..."
 "${APPT_CMD[@]}" bash -lc "
@@ -109,12 +123,10 @@ echo "[INFO] Starting main.py ..."
     decoding=top_k \
     detector=modernbert_mage \
     data_selection=importance_sampling \
-    num_iterations=10 \
+    num_iterations=$NUM_ITERS \
     wandb_disabled=true \
-    ++model.model_name_or_path='$GPT2_DIR' \
-    ++model.tokenizer_name='$GPT2_DIR' \
-    ++detector.model_path='$DET_DIR' \
-    ++detector.tokenizer_name='$DET_DIR'
+    ++detector.model_path='/opt/models/modernbert_ai_detection' \
+    ++detector.tokenizer_name='/opt/models/modernbert_ai_detection'
 "
 
 echo "[INFO] Done at $(date)"

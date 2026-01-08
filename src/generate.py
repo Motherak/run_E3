@@ -141,20 +141,36 @@ def main():
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-    # Load tokenizer and model
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side="left")
+    # Load tokenizer and model (offline-safe)
+    # If the config passes "gpt2", map to the container-local model path.
+    if args.model_name == "gpt2":
+        args.model_name = "/opt/models/gpt2"
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name,
+        padding_side="left",
+        local_files_only=True,
+    )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
-    
+
     torch_dtype = (
         args.torch_dtype
         if args.torch_dtype in ["auto", None]
         else getattr(torch, args.torch_dtype)
     )
+
     
-    model = AutoModelForCausalLM.from_pretrained(args.model_path, 
-                                                    torch_dtype=torch_dtype, 
-                                                    low_cpu_mem_usage=args.low_cpu_mem_usage)
+# offline-safe model loading
+if args.model_path == "gpt2":
+    args.model_path = "/opt/models/gpt2"
+
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_path,
+        torch_dtype=torch_dtype,
+        low_cpu_mem_usage=args.low_cpu_mem_usage,
+        local_files_only=True,
+    )
     model.to(args.device)
     model.eval()
 
