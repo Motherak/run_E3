@@ -129,6 +129,12 @@ def main():
     # Initialize wandb
     args = parse_args()
 
+    if args.model_name == "gpt2":
+        args.model_name = "/opt/models/gpt2"
+
+    if args.model_path == "gpt2":
+        args.model_path = "/opt/models/gpt2"
+
     wandb.init(
         name=f"generate_iteration_{args.iteration}",  # Name for this specific run
         config=vars(args),  # Save arguments to wandb
@@ -143,8 +149,6 @@ def main():
 
     # Load tokenizer and model (offline-safe)
     # If the config passes "gpt2", map to the container-local model path.
-    if args.model_name == "gpt2":
-        args.model_name = "/opt/models/gpt2"
 
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_name,
@@ -160,10 +164,6 @@ def main():
         else getattr(torch, args.torch_dtype)
     )
 
-    
-# offline-safe model loading
-if args.model_path == "gpt2":
-    args.model_path = "/opt/models/gpt2"
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_path,
@@ -171,6 +171,7 @@ if args.model_path == "gpt2":
         low_cpu_mem_usage=args.low_cpu_mem_usage,
         local_files_only=True,
     )
+
     model.to(args.device)
     model.eval()
 
