@@ -25,12 +25,11 @@ export WANDB_DISABLED=true
 
 cd "$WORKDIR"
 
+# Modelle liegen IM Container:
 GPT2_DIR="/opt/models/gpt2"
 DET_DIR="/opt/models/modernbert_ai_detection"
 
-apptainer exec --nv \
-  --bind "$WORKDIR:$WORKDIR" \
-  "$IMG" \
+apptainer exec --nv --bind "$WORKDIR:$WORKDIR" "$IMG" \
   python main.py \
     hydra.run.dir="$RUN_DIR" \
     dataset=wikitext2_local \
