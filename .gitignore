@@ -1,0 +1,71 @@
+# =========================
+# Ignore everything by default
+# =========================
+*
+
+# Allow directories (so Git can traverse)
+!*/
+
+# =========================
+# Allow repo essentials
+# =========================
+!.gitignore
+!README.md
+!LICENSE
+!requirements.txt
+!main.py
+
+# Optional docs/scripts you’ll likely want
+!**/*.md
+!**/*.txt
+!**/*.sh
+!**/*.bash
+
+# =========================
+# Allow source + configs
+# =========================
+!**/*.py
+!**/*.yaml
+!**/*.yml
+!**/*.slurm
+!**/*.def
+
+# If you keep small local dataset/config JSONs
+!data/**/*.json
+!config/**/*.json
+
+# =========================
+# Always ignore junk / runtime outputs (even if above matches)
+# =========================
+# Python / venv / caches
+**/__pycache__/
+**/*.pyc
+.venv/
+venv/
+.pydeps/
+.pyuserbase/
+.pip_cache/
+.hf_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+
+# Hydra
+**/.hydra/
+.hydra_args_*.txt
+
+# Training artifacts / outputs
+outputs*/
+**/outputs*/
+checkpoints/
+logs/
+wandb/
+
+# SLURM outputs
+*.o*
+*.e*
+*.out
+*.err
+
+# Editor swap files
+*.swp
+*.swo

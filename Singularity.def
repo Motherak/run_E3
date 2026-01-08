@@ -1,0 +1,52 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+
+%environment
+    export TRANSFORMERS_OFFLINE=1
+    export HF_HUB_OFFLINE=1
+    export WANDB_DISABLED=true
+    export TOKENIZERS_PARALLELISM=false
+
+    # Cache zur Laufzeit (wird im Slurm auf $SLURM_TMPDIR gebunden)
+    export HF_HOME=/tmp/.hf_cache
+    export TRANSFORMERS_CACHE=${HF_HOME}/transformers
+    export HF_DATASETS_CACHE=${HF_HOME}/datasets
+    export HUGGINGFACE_HUB_CACHE=${HF_HOME}/hub
+
+%post
+    set -eux
+    apt-get update
+    apt-get install -y --no-install-recommends git ca-certificates
+    rm -rf /var/lib/apt/lists/*
+
+    python -m pip install --upgrade pip setuptools wheel
+
+    # Core stack (inkl. certifi)
+    python -m pip install \
+      certifi requests urllib3 idna charset_normalizer \
+      huggingface_hub \
+      transformers==4.40.2 \
+      datasets==2.21.0 \
+      accelerate==0.33.0 \
+      sentencepiece protobuf
+
+    # Repo requirements (alles direkt in den Container)
+    python -m pip install -r /opt/requirements.txt
+
+    # Modelle in den Container laden (benötigt Internet beim Build)
+    python /opt/download_models_into_container.py
+
+    python - <<'PY'
+import certifi, requests, huggingface_hub, transformers
+print("certifi", certifi.__version__)
+print("requests", requests.__version__)
+print("hub", huggingface_hub.__version__)
+print("transformers", transformers.__version__)
+PY
+
+%files
+    requirements.txt /opt/requirements.txt
+    download_models_into_container.py /opt/download_models_into_container.py
+
+%runscript
+    exec python "$@"
