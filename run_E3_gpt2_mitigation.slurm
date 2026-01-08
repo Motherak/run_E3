@@ -11,35 +11,51 @@ echo "[INFO] Host: $(hostname)"
 echo "[INFO] JobID: ${SLURM_JOB_ID}"
 echo "[INFO] Start: $(date)"
 
+# ------------------------------------------------------------
+# Paths
+# ------------------------------------------------------------
 WORKDIR="/home/hpc/b116ba/b117ba41/Masterarbeit/KonkreteVersuche/E3_drayson/model_collapse"
 IMG="$WORKDIR/model_collapse_tf440.sif"
 RUN_DIR="$WORKDIR/outputs_fixed/gpt2_topk_importance/job_${SLURM_JOB_ID}"
 
-# Use node-local temp if available (reduces /home quota pressure)
+# ------------------------------------------------------------
+# Node-local temp (avoid ~/.local leakage)
+# ------------------------------------------------------------
 TMPBASE="${SLURM_TMPDIR:-/tmp}/${USER}/model_collapse_${SLURM_JOB_ID}"
 mkdir -p "$TMPBASE"
 
-# HF caches into tmp (writeable)
 export HF_HOME="$TMPBASE/.hf_cache"
 export TRANSFORMERS_CACHE="$HF_HOME/transformers"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
 export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
 
-# Offline + disable wandb
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
 export WANDB_DISABLED=true
 export TOKENIZERS_PARALLELISM=false
 
+# --- CRITICAL: prevent host python packages leaking into container ---
+export PYTHONNOUSERSITE=1
+unset PYTHONPATH
+unset PYTHONUSERBASE
+
+# Make container HOME clean
+export APPTAINERENV_HOME="$TMPBASE/home"
+mkdir -p "$TMPBASE/home"
+
+# ------------------------------------------------------------
+# Enter repo
+# ------------------------------------------------------------
 cd "$WORKDIR"
 
-# Ensure dataset config exists for Hydra (only needs local json files)
+# ------------------------------------------------------------
+# Dataset config for Hydra
+# ------------------------------------------------------------
 mkdir -p config/dataset
 cat > config/dataset/wikitext2_local.yaml <<'EOF'
 path: data/wikitext2
 EOF
 
-# Sanity check dataset files
 for f in data/wikitext2/train.json data/wikitext2/validation.json data/wikitext2/test.json; do
   if [ ! -f "$f" ]; then
     echo "[ERROR] Missing dataset file: $f"
@@ -48,19 +64,22 @@ for f in data/wikitext2/train.json data/wikitext2/validation.json data/wikitext2
 done
 echo "[INFO] Dataset JSONs found."
 
-# Models live INSIDE the container
+# ------------------------------------------------------------
+# Model paths (INSIDE container)
+# ------------------------------------------------------------
 GPT2_DIR="/opt/models/gpt2"
 DET_DIR="/opt/models/modernbert_ai_detection"
 
-# Create output dir
 mkdir -p "$RUN_DIR"
 
 echo "[INFO] RUN_DIR: $RUN_DIR"
 echo "[INFO] Using container: $IMG"
 echo "[INFO] TMPBASE: $TMPBASE"
 
-# Run
-apptainer exec --nv --bind "$WORKDIR:$WORKDIR" "$IMG" \
+# ------------------------------------------------------------
+# Run (Hydra overrides with ++ everywhere)
+# ------------------------------------------------------------
+apptainer exec --cleanenv --nv --bind "$WORKDIR:$WORKDIR" "$IMG" \
   python main.py \
     hydra.run.dir="$RUN_DIR" \
     dataset=wikitext2_local \
