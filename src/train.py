@@ -382,6 +382,21 @@ def main():
         "token": model_args.token,
         "trust_remote_code": model_args.trust_remote_code,
     }
+
+    # --- Offline model path fix (must be inside main(), correct indentation) ---
+    if model_args.model_name_or_path == "gpt2":
+        model_args.model_name_or_path = "/opt/models/gpt2"
+
+    # Manche HF-Examples haben tokenizer_name/config_name optional separat
+    if getattr(model_args, "tokenizer_name", None) == "gpt2":
+        model_args.tokenizer_name = "/opt/models/gpt2"
+
+    if getattr(model_args, "config_name", None) == "gpt2":
+        model_args.config_name = "/opt/models/gpt2"
+
+    # Force offline for all HF loads in this script
+    config_kwargs["local_files_only"] = True
+
     if model_args.config_name:
         config = AutoConfig.from_pretrained(model_args.config_name, **config_kwargs)
     elif model_args.model_name_or_path:
@@ -394,13 +409,16 @@ def main():
             config.update_from_string(model_args.config_overrides)
             logger.info(f"New config: {config}")
 
+
     tokenizer_kwargs = {
-        "cache_dir": model_args.cache_dir,
-        "use_fast": model_args.use_fast_tokenizer,
-        "revision": model_args.model_revision,
-        "token": model_args.token,
-        "trust_remote_code": model_args.trust_remote_code,
-    }
+    "cache_dir": model_args.cache_dir,
+    "use_fast": model_args.use_fast_tokenizer,
+    "revision": model_args.model_revision,
+    "token": model_args.token,
+    "trust_remote_code": model_args.trust_remote_code,
+    "local_files_only": True,   # ✅ offline hard stop
+}
+
     if model_args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name, **tokenizer_kwargs)
     elif model_args.model_name_or_path:
@@ -410,6 +428,7 @@ def main():
             "You are instantiating a new tokenizer from scratch. This is not supported by this script. "
             "You can do it from another script, save it, and load it from here, using --tokenizer_name."
         )
+
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -430,6 +449,7 @@ def main():
             trust_remote_code=model_args.trust_remote_code,
             torch_dtype=torch_dtype,
             low_cpu_mem_usage=model_args.low_cpu_mem_usage,
+            local_files_only=True,   # ✅ offline hard stop
         )
     else:
         model = AutoModelForCausalLM.from_config(config, trust_remote_code=model_args.trust_remote_code)
