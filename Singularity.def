@@ -1,99 +1,103 @@
-Bootstrap: docker
-From: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+#!/bin/bash
+#SBATCH --job-name=E3_level1_mitigation
+#SBATCH --time=23:00:00
+#SBATCH --gres=gpu:a100:1
+#SBATCH --output=E3_level1_mitigation.o%j
+#SBATCH --error=E3_level1_mitigation.e%j
 
-%environment
-    # ---- runtime behaviour ----
-    export TRANSFORMERS_OFFLINE=1
-    export HF_HUB_OFFLINE=1
+set -euo pipefail
 
-    # wandb MUST be fully disabled (prevents API key prompt)
-    export WANDB_MODE=disabled
-    export WANDB_DISABLED=true
-    export WANDB_SILENT=true
+echo "[INFO] Host: $(hostname)"
+echo "[INFO] JobID: ${SLURM_JOB_ID}"
+echo "[INFO] Start: $(date)"
 
-    export TOKENIZERS_PARALLELISM=false
+WORKDIR="/home/hpc/b116ba/b117ba41/Masterarbeit/KonkreteVersuche/E3_drayson/model_collapse"
+IMG="$WORKDIR/model_collapse_tfdev.sif"
+RUN_DIR="$WORKDIR/outputs_fixed/gpt2_topk_importance/job_${SLURM_JOB_ID}"
 
-    # ---- caches (bind these to $SLURM_TMPDIR in Slurm) ----
-    export HF_HOME=/tmp/.hf_cache
-    export HF_DATASETS_CACHE=${HF_HOME}/datasets
-    export HUGGINGFACE_HUB_CACHE=${HF_HOME}/hub
-    export TRANSFORMERS_CACHE=${HF_HOME}/transformers
+NUM_ITERS=10
 
-%files
-    requirements.txt /opt/requirements.txt
-    download_models_into_container.py /opt/download_models_into_container.py
+TMPBASE="${SLURM_TMPDIR:-/tmp}/${USER}/model_collapse_${SLURM_JOB_ID}"
+mkdir -p "$TMPBASE" "$TMPBASE/home"
 
-%post
-    set -eux
+HF_HOME="$TMPBASE/.hf_cache"
+TRANSFORMERS_CACHE="$HF_HOME/transformers"
+HF_DATASETS_CACHE="$HF_HOME/datasets"
+HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
+mkdir -p "$HF_HOME" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE" "$HUGGINGFACE_HUB_CACHE"
 
-    # ------------------------------------------------------------
-    # System basics
-    # ------------------------------------------------------------
-    apt-get update
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        git
-    rm -rf /var/lib/apt/lists/*
+cd "$WORKDIR"
 
-    # ------------------------------------------------------------
-    # Python tooling
-    # ------------------------------------------------------------
-    python -m pip install --upgrade pip setuptools wheel
+# Dataset config (Hydra)
+mkdir -p config/dataset
+cat > config/dataset/wikitext2_local.yaml <<'EOF'
+path: data/wikitext2
+EOF
 
-    # ------------------------------------------------------------
-    # Always fix requests/certifi stack + hub
-    # ------------------------------------------------------------
-    python -m pip install --upgrade --force-reinstall \
-        certifi \
-        requests \
-        urllib3 \
-        idna \
-        charset_normalizer \
-        huggingface_hub
+# Sanity check dataset files
+for f in data/wikitext2/train.json data/wikitext2/validation.json data/wikitext2/test.json; do
+  [ -f "$f" ] || { echo "[ERROR] Missing $f"; exit 1; }
+done
 
-    # ------------------------------------------------------------
-    # Install core deps (torch already in base image)
-    # ------------------------------------------------------------
-    python -m pip install --upgrade \
-        datasets \
-        accelerate \
-        sentencepiece \
-        protobuf
+# Models inside container
+GPT2_DIR="/opt/models/gpt2"
+DET_DIR="/opt/models/modernbert_ai_detection"
 
-    # ------------------------------------------------------------
-    # Transformers FROM SOURCE (required by src/train.py check_min_version)
-    # This satisfies: check_min_version("4.48.0.dev0")
-    # ------------------------------------------------------------
-    python -m pip install --upgrade --force-reinstall \
-        "git+https://github.com/huggingface/transformers.git@main"
+# Precreate expected generation folders (RUN_DIR/<i>/data.json)
+mkdir -p "$RUN_DIR"
+for i in $(seq 0 $NUM_ITERS); do
+  mkdir -p "$RUN_DIR/$i"
+  cp -f "$WORKDIR/data/wikitext2/train.json" "$RUN_DIR/$i/data.json"
+done
+echo "[INFO] Precreated $((NUM_ITERS+1)) folders with data.json under: $RUN_DIR"
 
-    # ------------------------------------------------------------
-    # Repo requirements
-    # ------------------------------------------------------------
-    python -m pip install -r /opt/requirements.txt
+# Apptainer isolation (no host ~/.local)
+APPT_CMD=(apptainer exec --nv --cleanenv --containall --no-home
+  --bind "$WORKDIR:$WORKDIR"
+  --bind "$TMPBASE:$TMPBASE"
+  --pwd "$WORKDIR"
+  --env APPTAINERENV_HOME="$TMPBASE/home"
+  --env APPTAINERENV_PYTHONNOUSERSITE=1
+  --env APPTAINERENV_TOKENIZERS_PARALLELISM=false
+  --env APPTAINERENV_TRANSFORMERS_OFFLINE=1
+  --env APPTAINERENV_HF_HUB_OFFLINE=1
+  --env APPTAINERENV_HF_HOME="$HF_HOME"
+  --env APPTAINERENV_TRANSFORMERS_CACHE="$TRANSFORMERS_CACHE"
+  --env APPTAINERENV_HF_DATASETS_CACHE="$HF_DATASETS_CACHE"
+  --env APPTAINERENV_HUGGINGFACE_HUB_CACHE="$HUGGINGFACE_HUB_CACHE"
+  --env APPTAINERENV_WANDB_MODE=disabled
+  --env APPTAINERENV_WANDB_DISABLED=true
+  --env APPTAINERENV_WANDB_SILENT=true
+  "$IMG"
+)
 
-    # ------------------------------------------------------------
-    # Download models INTO the container (needs internet at build time)
-    # Must save into /opt/models/* (as in your script)
-    # ------------------------------------------------------------
-    python /opt/download_models_into_container.py
-
-    # ------------------------------------------------------------
-    # Smoke test
-    # ------------------------------------------------------------
-    python - <<'PY'
-import sys, torch, transformers, certifi, requests, huggingface_hub, os
-print("python:", sys.version)
+# Debug torch location
+echo "[INFO] Debug torch location..."
+"${APPT_CMD[@]}" python - <<'PY'
+import torch
 print("torch:", torch.__version__)
-print("transformers:", transformers.__version__)
-print("certifi:", certifi.__version__)
-print("requests:", requests.__version__)
-print("huggingface_hub:", huggingface_hub.__version__)
-print("WANDB_MODE:", os.environ.get("WANDB_MODE"))
-print("models exist:",
-      os.path.isdir("/opt/models/gpt2"),
-      os.path.isdir("/opt/models/modernbert_ai_detection"))
+print("torch file:", torch.__file__)
 PY
 
-%runscript
-    exec python "$@"
+echo "[INFO] Starting main.py ..."
+"${APPT_CMD[@]}" bash -lc "
+  cd '$WORKDIR'
+  python '$WORKDIR/main.py' \
+    hydra.run.dir='$RUN_DIR' \
+    dataset=wikitext2_local \
+    model=gpt2 \
+    decoding=top_k \
+    detector=modernbert_mage \
+    data_selection=importance_sampling \
+    num_iterations=$NUM_ITERS \
+    wandb_disabled=true \
+    ++model.model_name_or_path='$GPT2_DIR' \
+    ++model.tokenizer_name='$GPT2_DIR' \
+    ++detector.model_path='$DET_DIR' \
+    ++detector.tokenizer_name='$DET_DIR' \
+    ++generate.model_name='$GPT2_DIR' \
+    ++generate.tokenizer_name='$GPT2_DIR'
+"
+
+echo "[INFO] Done at $(date)"
+echo "[INFO] Outputs: $RUN_DIR"
