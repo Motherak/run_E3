@@ -99,4 +99,23 @@ PY
 # ------------------------------------------------------------
 # Run (Hydra overrides with ++ everywhere)
 # ------------------------------------------------------------
-echo "[INFO] Starting main.p
+echo "[INFO] Starting main.py ..."
+"${APPT_CMD[@]}" bash -lc "
+  cd '$WORKDIR'
+  python '$WORKDIR/main.py' \
+    hydra.run.dir='$RUN_DIR' \
+    dataset=wikitext2_local \
+    model=gpt2 \
+    decoding=top_k \
+    detector=modernbert_mage \
+    data_selection=importance_sampling \
+    num_iterations=10 \
+    wandb_disabled=true \
+    ++model.model_name_or_path='$GPT2_DIR' \
+    ++model.tokenizer_name='$GPT2_DIR' \
+    ++detector.model_path='$DET_DIR' \
+    ++detector.tokenizer_name='$DET_DIR'
+"
+
+echo "[INFO] Done at $(date)"
+echo "[INFO] Outputs: $RUN_DIR"
